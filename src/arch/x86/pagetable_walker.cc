@@ -537,19 +537,24 @@ Walker::WalkerState::stepWalk(PacketPtr &write)
             nextRead, oldRead->getSize(), flags, walker->requestorId);
         read = new Packet(request, MemCmd::ReadReq);
         read->allocate();
-        // If we need to write, adjust the read packet to write the modified
-        // value back to memory.
+        // If we need to write, write the modified value back to memory.
         if (doWrite) {
-            write = oldRead;
+            // Build a fresh write packet rather than turning the read
+            // response into a request. A response carries responder state
+            // (e.g. CACHE_RESPONDING when another cache supplied a dirty
+            // copy of the page-table line); sent back out as a request it
+            // trips CoherentXBar's "is_express_snoop == cache_responding"
+            // assertion in timing mode.
+            write = new Packet(oldRead->req, MemCmd::WriteReq);
+            write->allocate();
             if (dataSize == 8)
                 write->setLE<uint64_t>(pte);
             else
                 write->setLE<uint32_t>(pte);
-            write->cmd = MemCmd::WriteReq;
         } else {
             write = NULL;
-            delete oldRead;
         }
+        delete oldRead;
     }
     return fault;
 }
