@@ -331,6 +331,90 @@ MADT::LAPICOverride::prepareBuf(std::vector<uint8_t>& mem) const
     Record::prepareBuf(mem);
 }
 
+//// SRAT
+SRAT::SRAT::SRAT(const Params &p)
+    : // Revision 3 (ACPI 3.0+): 32-bit proximity domains in every structure.
+      SysDescTable(p, "SRAT", 3),
+      records(p.records)
+{}
+
+Addr
+SRAT::SRAT::writeBuf(PortProxy &phys_proxy, Allocator &alloc,
+                     std::vector<uint8_t> &mem) const
+{
+    // Since this table ends with a variably sized array, it can't be extended
+    // by another table type.
+    assert(mem.empty());
+    mem.resize(sizeof(Mem));
+
+    Mem *header = reinterpret_cast<Mem *>(mem.data());
+    header->tableRevision = 1;
+
+    for (const auto &record : records) {
+        auto entry = record->prepare();
+        mem.insert(mem.end(), entry.begin(), entry.end());
+    }
+
+    DPRINTF(ACPI, "SRAT: writing %d records (size: %d)\n", records.size(),
+            mem.size());
+
+    return SysDescTable::writeBuf(phys_proxy, alloc, mem);
+}
+
+void
+SRAT::Record::prepareBuf(std::vector<uint8_t> &mem) const
+{
+    assert(mem.size() >= sizeof(Mem));
+    DPRINTF(ACPI, "SRAT: writing record type %d (size: %d)\n", type,
+            mem.size());
+
+    Mem *header = reinterpret_cast<Mem *>(mem.data());
+    header->type = type;
+    header->length = mem.size();
+}
+
+void
+SRAT::LAPICAffinity::prepareBuf(std::vector<uint8_t> &mem) const
+{
+    assert(mem.empty());
+    mem.resize(sizeof(Mem));
+
+    const uint32_t domain = params().proximity_domain;
+    Mem *data = reinterpret_cast<Mem *>(mem.data());
+    data->proximityDomainLo = domain & 0xff;
+    data->apicId = params().apic_id;
+    // Unaligned fields in a packed struct: copy rather than assign.
+    const uint32_t flags = params().flags;
+    memcpy(&data->flags, &flags, sizeof(data->flags));
+    data->proximityDomainHi[0] = (domain >> 8) & 0xff;
+    data->proximityDomainHi[1] = (domain >> 16) & 0xff;
+    data->proximityDomainHi[2] = (domain >> 24) & 0xff;
+    const uint32_t clock_domain = params().clock_domain;
+    memcpy(&data->clockDomain, &clock_domain, sizeof(data->clockDomain));
+
+    Record::prepareBuf(mem);
+}
+
+void
+SRAT::MemAffinity::prepareBuf(std::vector<uint8_t> &mem) const
+{
+    assert(mem.empty());
+    mem.resize(sizeof(Mem));
+
+    Mem *data = reinterpret_cast<Mem *>(mem.data());
+    // Unaligned fields in a packed struct: copy rather than assign.
+    const uint32_t domain = params().proximity_domain;
+    const uint64_t base = params().base_address;
+    const uint64_t length = params().length;
+    const uint32_t flags = params().flags;
+    memcpy(&data->proximityDomain, &domain, sizeof(data->proximityDomain));
+    memcpy(&data->baseAddress, &base, sizeof(data->baseAddress));
+    memcpy(&data->length, &length, sizeof(data->length));
+    memcpy(&data->flags, &flags, sizeof(data->flags));
+
+    Record::prepareBuf(mem);
+}
+
 } // namespace ACPI
 
 } // namespace X86ISA

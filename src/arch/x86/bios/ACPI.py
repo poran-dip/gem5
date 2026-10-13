@@ -137,6 +137,49 @@ class X86ACPIMadtLAPICOverride(X86ACPIMadtRecord):
     address = Param.Addr(0, "64-bit Physical Address of Local APIC")
 
 
+# System Resource Affinity Table: which proximity domain (NUMA node) each CPU
+# and memory range belongs to. Attach it to the RSDT/XSDT entries, as the
+# MADT is. Linux needs every E820 RAM range covered by a memory affinity
+# record, or it ignores the table.
+class X86ACPISratRecord(SimObject):
+    type = "X86ACPISratRecord"
+    cxx_class = "gem5::X86ISA::ACPI::SRAT::Record"
+    cxx_header = "arch/x86/bios/acpi.hh"
+    abstract = True
+
+
+class X86ACPISrat(X86ACPISysDescTable):
+    type = "X86ACPISrat"
+    cxx_class = "gem5::X86ISA::ACPI::SRAT::SRAT"
+    cxx_header = "arch/x86/bios/acpi.hh"
+
+    records = VectorParam.X86ACPISratRecord([], "Records in this SRAT")
+
+
+class X86ACPISratLAPICAffinity(X86ACPISratRecord):
+    type = "X86ACPISratLAPICAffinity"
+    cxx_class = "gem5::X86ISA::ACPI::SRAT::LAPICAffinity"
+    cxx_header = "arch/x86/bios/acpi.hh"
+
+    proximity_domain = Param.UInt32(0, "Proximity domain of this CPU")
+    apic_id = Param.UInt8(0, "Local APIC ID of the CPU")
+    flags = Param.UInt32(1, "Flags (bit 0: enabled)")
+    clock_domain = Param.UInt32(0, "Clock domain of the CPU")
+
+
+class X86ACPISratMemAffinity(X86ACPISratRecord):
+    type = "X86ACPISratMemAffinity"
+    cxx_class = "gem5::X86ISA::ACPI::SRAT::MemAffinity"
+    cxx_header = "arch/x86/bios/acpi.hh"
+
+    proximity_domain = Param.UInt32(0, "Proximity domain of this range")
+    base_address = Param.Addr(0, "Start of the physical address range")
+    length = Param.MemorySize("0B", "Length of the physical address range")
+    flags = Param.UInt32(
+        1, "Flags (bit 0: enabled, 1: hot-pluggable, 2: non-volatile)"
+    )
+
+
 # Root System Description Pointer Structure
 class X86ACPIRSDP(SimObject):
     type = "X86ACPIRSDP"
