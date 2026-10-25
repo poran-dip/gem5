@@ -67,6 +67,7 @@ SimObject('HMCController.py', sim_objects=['HMCController'])
 SimObject('SerialLink.py', sim_objects=['SerialLink'])
 SimObject('MemDelay.py', sim_objects=['MemDelay', 'SimpleMemDelay'])
 SimObject('PortTerminator.py', sim_objects=['PortTerminator'])
+SimObject('PCIeMemLink.py', sim_objects=['PCIeMemLink'])
 SimObject('ThreadBridge.py', sim_objects=['ThreadBridge'])
 
 Source('abstract_mem.cc')
@@ -105,6 +106,7 @@ Source('htm.cc')
 Source('serial_link.cc')
 Source('mem_delay.cc')
 Source('port_terminator.cc')
+Source('pcie_mem_link.cc')
 
 GTest('backdoor_manager.test', 'backdoor_manager.test.cc',
       'backdoor_manager.cc', with_tag('gem5_trace'))
@@ -143,6 +145,7 @@ CompoundFlag('XBar', ['BaseXBar', 'CoherentXBar', 'NoncoherentXBar',
                       'SnoopFilter'])
 
 DebugFlag('Bridge')
+DebugFlag('PCIeMemLink')
 DebugFlag('CommMonitor')
 DebugFlag('DRAM')
 DebugFlag('DRAMPower')
