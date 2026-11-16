@@ -46,6 +46,10 @@
 #include "base/compiler.hh"
 #include "base/types.hh"
 #include "debug/ACPI.hh"
+#include "params/X86ACPIHmat.hh"
+#include "params/X86ACPIHmatLocality.hh"
+#include "params/X86ACPIHmatProximityDomain.hh"
+#include "params/X86ACPIHmatRecord.hh"
 #include "params/X86ACPIMadt.hh"
 #include "params/X86ACPIMadtIOAPIC.hh"
 #include "params/X86ACPIMadtIntSourceOverride.hh"
@@ -476,6 +480,130 @@ class SRAT : public SysDescTable
 };
 
 } // namespace SRAT
+
+/*
+ * Heterogeneous Memory Attribute Table (ACPI 6.5, section 5.2.28). Gives the
+ * OS the access latency and bandwidth between initiators (CPUs) and targets
+ * (memory) per proximity domain, which Linux uses to place a CPU-less memory
+ * node in a lower memory tier than DRAM. Only what that needs is implemented:
+ * Memory Proximity Domain Attributes (type 0) and System Locality Latency
+ * and Bandwidth Information (type 1). Memory side caches (type 2) are not.
+ */
+namespace HMAT
+{
+
+class Record : public SimObject
+{
+  protected:
+    PARAMS(X86ACPIHmatRecord);
+
+    struct GEM5_PACKED Mem
+    {
+        uint16_t type = 0;
+        uint16_t _reserved = 0;
+        uint32_t length = 0;
+    };
+    static_assert(std::is_trivially_copyable_v<Mem>,
+                  "Type not suitable for memcpy.");
+    static_assert(sizeof(Mem) == 8, "HMAT structure header must be 8 bytes");
+
+    uint16_t type;
+
+    virtual void prepareBuf(std::vector<uint8_t> &mem) const = 0;
+
+  public:
+    Record(const Params &p, uint16_t _type) : SimObject(p), type(_type) {}
+
+    std::vector<uint8_t>
+    prepare() const
+    {
+        std::vector<uint8_t> mem;
+        prepareBuf(mem);
+        return mem;
+    }
+};
+
+// Type 0, 40 bytes.
+class ProximityDomain : public Record
+{
+  protected:
+    PARAMS(X86ACPIHmatProximityDomain);
+
+    struct GEM5_PACKED Mem : public Record::Mem
+    {
+        uint16_t flags = 0; // bit 0: initiator domain valid
+        uint16_t _reserved1 = 0;
+        uint32_t initiatorDomain = 0;
+        uint32_t memoryDomain = 0;
+        uint32_t _reserved2 = 0;
+        uint64_t _reserved3 = 0;
+        uint64_t _reserved4 = 0;
+    };
+    static_assert(std::is_trivially_copyable_v<Mem>,
+                  "Type not suitable for memcpy.");
+    static_assert(sizeof(Mem) == 40,
+                  "HMAT memory proximity domain must be 40 bytes");
+
+    void prepareBuf(std::vector<uint8_t> &mem) const override;
+
+  public:
+    ProximityDomain(const Params &p) : Record(p, 0) {}
+};
+
+// Type 1: a 32-byte header, then the initiator domains (4 B each), the
+// target domains (4 B each) and one 16-bit entry per (initiator, target),
+// initiator-major. The value of an entry is entry * entryBaseUnit; entry 0
+// means "not provided" and 0xFFFF "unreachable".
+class Locality : public Record
+{
+  protected:
+    PARAMS(X86ACPIHmatLocality);
+
+    struct GEM5_PACKED Mem : public Record::Mem
+    {
+        uint8_t flags = 0; // bits 3:0 memory hierarchy (0 = memory)
+        uint8_t dataType = 0; // 0 access latency ... 5 write bandwidth
+        uint8_t minTransferSize = 0;
+        uint8_t _reserved1 = 0;
+        uint32_t numInitiators = 0;
+        uint32_t numTargets = 0;
+        uint32_t _reserved2 = 0;
+        uint64_t entryBaseUnit = 0;
+    };
+    static_assert(std::is_trivially_copyable_v<Mem>,
+                  "Type not suitable for memcpy.");
+    static_assert(sizeof(Mem) == 32,
+                  "HMAT locality header must be 32 bytes");
+
+    void prepareBuf(std::vector<uint8_t> &mem) const override;
+
+  public:
+    Locality(const Params &p) : Record(p, 1) {}
+};
+
+class HMAT : public SysDescTable
+{
+  protected:
+    PARAMS(X86ACPIHmat);
+
+    struct GEM5_PACKED Mem : public SysDescTable::Mem
+    {
+        uint32_t _reserved = 0;
+    };
+    static_assert(std::is_trivially_copyable_v<Mem>,
+                  "Type not suitable for memcpy.");
+    static_assert(sizeof(Mem) == 40, "HMAT header must be 40 bytes");
+
+    std::vector<Record *> records;
+
+    Addr writeBuf(PortProxy &phys_proxy, Allocator &alloc,
+                  std::vector<uint8_t> &mem) const override;
+
+  public:
+    HMAT(const Params &p);
+};
+
+} // namespace HMAT
 
 } // namespace ACPI
 

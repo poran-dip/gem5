@@ -83,7 +83,9 @@ SimObject(
                  'X86ACPIMadtIOAPIC', 'X86ACPIMadtIntSourceOverride',
                  'X86ACPIMadtNMI', 'X86ACPIMadtLAPICOverride', 'X86ACPIRSDP',
                  'X86ACPISratRecord', 'X86ACPISrat',
-                 'X86ACPISratLAPICAffinity', 'X86ACPISratMemAffinity'],
+                 'X86ACPISratLAPICAffinity', 'X86ACPISratMemAffinity',
+                 'X86ACPIHmatRecord', 'X86ACPIHmat',
+                 'X86ACPIHmatProximityDomain', 'X86ACPIHmatLocality'],
     tags=['x86 isa']
 )
 Source('acpi.cc', tags=['x86 isa'])

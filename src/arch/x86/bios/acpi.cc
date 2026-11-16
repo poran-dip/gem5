@@ -415,6 +415,110 @@ SRAT::MemAffinity::prepareBuf(std::vector<uint8_t> &mem) const
     Record::prepareBuf(mem);
 }
 
+//// HMAT
+HMAT::HMAT::HMAT(const Params &p)
+    : // Revision 2 (ACPI 6.3+): the proximity domain structure no longer
+      // carries a memory address range; Linux accepts revisions 1 and 2.
+      SysDescTable(p, "HMAT", 2),
+      records(p.records)
+{}
+
+Addr
+HMAT::HMAT::writeBuf(PortProxy &phys_proxy, Allocator &alloc,
+                     std::vector<uint8_t> &mem) const
+{
+    // Since this table ends with a variably sized array, it can't be extended
+    // by another table type.
+    assert(mem.empty());
+    mem.resize(sizeof(Mem));
+
+    for (const auto &record : records) {
+        auto entry = record->prepare();
+        mem.insert(mem.end(), entry.begin(), entry.end());
+    }
+
+    DPRINTF(ACPI, "HMAT: writing %d records (size: %d)\n", records.size(),
+            mem.size());
+
+    return SysDescTable::writeBuf(phys_proxy, alloc, mem);
+}
+
+void
+HMAT::Record::prepareBuf(std::vector<uint8_t> &mem) const
+{
+    assert(mem.size() >= sizeof(Mem));
+    DPRINTF(ACPI, "HMAT: writing record type %d (size: %d)\n", type,
+            mem.size());
+
+    Mem *header = reinterpret_cast<Mem *>(mem.data());
+    // Unaligned fields in a packed struct: copy rather than assign.
+    const uint16_t t = type;
+    const uint32_t len = mem.size();
+    memcpy(&header->type, &t, sizeof(header->type));
+    memcpy(&header->length, &len, sizeof(header->length));
+}
+
+void
+HMAT::ProximityDomain::prepareBuf(std::vector<uint8_t> &mem) const
+{
+    assert(mem.empty());
+    mem.resize(sizeof(Mem));
+
+    Mem *data = reinterpret_cast<Mem *>(mem.data());
+    const uint16_t flags = params().flags;
+    const uint32_t initiator = params().initiator_domain;
+    const uint32_t memory = params().memory_domain;
+    memcpy(&data->flags, &flags, sizeof(data->flags));
+    memcpy(&data->initiatorDomain, &initiator, sizeof(data->initiatorDomain));
+    memcpy(&data->memoryDomain, &memory, sizeof(data->memoryDomain));
+
+    Record::prepareBuf(mem);
+}
+
+void
+HMAT::Locality::prepareBuf(std::vector<uint8_t> &mem) const
+{
+    assert(mem.empty());
+
+    const auto &initiators = params().initiators;
+    const auto &targets = params().targets;
+    const auto &entries = params().entries;
+    fatal_if(entries.size() != initiators.size() * targets.size(),
+             "HMAT locality %s: %d entries for %d initiators x %d targets",
+             name(), entries.size(), initiators.size(), targets.size());
+
+    const size_t init_off = sizeof(Mem);
+    const size_t targ_off = init_off + 4 * initiators.size();
+    const size_t entry_off = targ_off + 4 * targets.size();
+    mem.resize(entry_off + 2 * entries.size());
+
+    Mem *data = reinterpret_cast<Mem *>(mem.data());
+    data->flags = params().flags;
+    data->dataType = params().data_type;
+    data->minTransferSize = params().min_transfer_size;
+    const uint32_t num_init = initiators.size();
+    const uint32_t num_targ = targets.size();
+    const uint64_t base_unit = params().entry_base_unit;
+    memcpy(&data->numInitiators, &num_init, sizeof(data->numInitiators));
+    memcpy(&data->numTargets, &num_targ, sizeof(data->numTargets));
+    memcpy(&data->entryBaseUnit, &base_unit, sizeof(data->entryBaseUnit));
+
+    for (size_t i = 0; i < initiators.size(); i++) {
+        const uint32_t v = initiators[i];
+        memcpy(mem.data() + init_off + 4 * i, &v, sizeof(v));
+    }
+    for (size_t i = 0; i < targets.size(); i++) {
+        const uint32_t v = targets[i];
+        memcpy(mem.data() + targ_off + 4 * i, &v, sizeof(v));
+    }
+    for (size_t i = 0; i < entries.size(); i++) {
+        const uint16_t v = entries[i];
+        memcpy(mem.data() + entry_off + 2 * i, &v, sizeof(v));
+    }
+
+    Record::prepareBuf(mem);
+}
+
 } // namespace ACPI
 
 } // namespace X86ISA
