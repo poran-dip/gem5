@@ -180,6 +180,58 @@ class X86ACPISratMemAffinity(X86ACPISratRecord):
     )
 
 
+# Heterogeneous Memory Attribute Table: latency and bandwidth from each
+# initiator (CPU) proximity domain to each memory proximity domain. With it,
+# Linux (6.11 or later) puts a CPU-less memory node in a lower memory tier
+# than DRAM, which memory demotion and promotion need. Attach it to the
+# RSDT/XSDT entries next to the SRAT; the domains must exist in the SRAT.
+class X86ACPIHmatRecord(SimObject):
+    type = "X86ACPIHmatRecord"
+    cxx_class = "gem5::X86ISA::ACPI::HMAT::Record"
+    cxx_header = "arch/x86/bios/acpi.hh"
+    abstract = True
+
+
+class X86ACPIHmat(X86ACPISysDescTable):
+    type = "X86ACPIHmat"
+    cxx_class = "gem5::X86ISA::ACPI::HMAT::HMAT"
+    cxx_header = "arch/x86/bios/acpi.hh"
+
+    records = VectorParam.X86ACPIHmatRecord([], "Records in this HMAT")
+
+
+class X86ACPIHmatProximityDomain(X86ACPIHmatRecord):
+    type = "X86ACPIHmatProximityDomain"
+    cxx_class = "gem5::X86ISA::ACPI::HMAT::ProximityDomain"
+    cxx_header = "arch/x86/bios/acpi.hh"
+
+    flags = Param.UInt16(1, "Flags (bit 0: initiator domain valid)")
+    initiator_domain = Param.UInt32(0, "Proximity domain of the nearest CPU")
+    memory_domain = Param.UInt32(0, "Proximity domain of this memory")
+
+
+class X86ACPIHmatLocality(X86ACPIHmatRecord):
+    type = "X86ACPIHmatLocality"
+    cxx_class = "gem5::X86ISA::ACPI::HMAT::Locality"
+    cxx_header = "arch/x86/bios/acpi.hh"
+
+    flags = Param.UInt8(0, "Flags (bits 3:0 memory hierarchy, 0 = memory)")
+    data_type = Param.UInt8(
+        0,
+        "0 access latency, 1 read latency, 2 write latency, 3 access "
+        "bandwidth, 4 read bandwidth, 5 write bandwidth",
+    )
+    min_transfer_size = Param.UInt8(0, "Minimum transfer size (0 = unknown)")
+    entry_base_unit = Param.UInt64(
+        1, "Entry unit: picoseconds for latency, MB/s for bandwidth"
+    )
+    initiators = VectorParam.UInt32([], "Initiator proximity domains")
+    targets = VectorParam.UInt32([], "Target (memory) proximity domains")
+    entries = VectorParam.UInt16(
+        [], "One entry per (initiator, target), initiator-major"
+    )
+
+
 # Root System Description Pointer Structure
 class X86ACPIRSDP(SimObject):
     type = "X86ACPIRSDP"
